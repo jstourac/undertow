@@ -33,6 +33,7 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
@@ -687,7 +688,7 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
      */
     public static void stopSSLServer() throws IOException {
         if (sslServer != null) {
-            sslServer.close();
+            sslServer.close(); //sslServer.isOpen();
             sslServer = null;
         }
         clientSslContext = null;
@@ -695,6 +696,12 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
             proxyOpenListener.closeConnections();
         } else {
             openListener.closeConnections();
+        }
+
+        try {
+            TimeUnit.SECONDS.sleep(5);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
