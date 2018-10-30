@@ -24,6 +24,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
+import java.util.concurrent.TimeUnit;
 
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
@@ -155,6 +156,11 @@ public class ComplexSSLTestCase {
         } finally {
             client.getConnectionManager().shutdown();
             DefaultServer.stopSSLServer();
+            try {
+                TimeUnit.SECONDS.sleep(5);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
     }
 
