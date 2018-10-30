@@ -699,7 +699,7 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
         }
 
         try {
-            TimeUnit.SECONDS.sleep(5);
+            TimeUnit.SECONDS.sleep(1);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
