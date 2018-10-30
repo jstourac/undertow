@@ -24,6 +24,7 @@ import static org.xnio.SslClientAuthMode.REQUESTED;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.BindException;
 import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -673,7 +674,18 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
                 .getMap();
 
         UndertowXnioSsl ssl = new UndertowXnioSsl(worker.getXnio(), OptionMap.EMPTY, SSL_BUFFER_POOL, context);
-        sslServer = ssl.createSslConnectionServer(worker, new InetSocketAddress(getHostAddress("default"), port), openListener, combined);
+        try {
+            sslServer = ssl.createSslConnectionServer(worker, new InetSocketAddress(getHostAddress("default"), port),
+                    openListener, combined);
+        } catch (BindException e) {
+            // Address is probably already in use, let's try it again in a minute...
+            try {
+                TimeUnit.SECONDS.sleep(2);
+            } catch (InterruptedException e1) {
+            }
+            sslServer = ssl.createSslConnectionServer(worker, new InetSocketAddress(getHostAddress("default"), port),
+                    openListener, combined);
+        }
         sslServer.getAcceptSetter().set(openListener);
         sslServer.resumeAccepts();
     }
@@ -697,12 +709,12 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
         } else {
             openListener.closeConnections();
         }
-
-        try {
-            TimeUnit.SECONDS.sleep(1);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+//
+//        try {
+//            TimeUnit.SECONDS.sleep(1);
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
     }
 
     public static String getHostAddress(String serverName) {
