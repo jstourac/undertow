@@ -19,20 +19,27 @@
 package io.undertow.testutils;
 
 import static io.undertow.server.handlers.ResponseCodeHandler.HANDLE_404;
+import static org.junit.Assert.assertTrue;
 import static org.xnio.Options.SSL_CLIENT_AUTH_MODE;
 import static org.xnio.SslClientAuthMode.REQUESTED;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.file.Files;
+import java.security.GeneralSecurityException;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -136,10 +143,6 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
     private static SSLContext clientSslContext;
     private static Xnio xnio;
 
-    private static final String SERVER_KEY_STORE = "server.keystore";
-    private static final String SERVER_TRUST_STORE = "server.truststore";
-    private static final String CLIENT_KEY_STORE = "client.keystore";
-    private static final String CLIENT_TRUST_STORE = "client.truststore";
     private static final char[] STORE_PASSWORD = "password".toCharArray();
 
     private static final boolean ajp = Boolean.getBoolean("test.ajp");
@@ -160,8 +163,90 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
 
     private static LoadBalancingProxyClient loadBalancingProxyClient;
 
-    private static KeyStore loadKeyStore(final String name) throws IOException {
-        final InputStream stream = DefaultServer.class.getClassLoader().getResourceAsStream(name);
+    private enum KEY_STORE {
+        SERVER_KEY_STORE("server", "server", "CN=" + DefaultServer.getHostAddress() + ",OU=OU,O=Org,L=City,ST=State,C=GB"),
+        CLIENT_KEY_STORE("client", "client", "CN=Test Client,OU=OU,O=Org,L=City,ST=State,C=GB"),
+        SERVER_TRUST_STORE("server", "client", CLIENT_KEY_STORE.keyPair.getCertificate()), // TODO - alias may be "CN=Test Client,OU=OU,O=Org,L=City,ST=State,C=GB"
+        CLIENT_TRUST_STORE("client", "server", SERVER_KEY_STORE.keyPair.getCertificate());
+
+        private final String alias;
+        private final String prefix;
+        private final String suffix;
+        private final KeyPairAndCertificate keyPair;
+        private final X509Certificate certificate;
+        private File file;
+
+        /**
+         * Create enum instance with key-pair to be used for keystore with self-signed certificate.
+         *
+         * @param name      basename of the keystore file
+         * @param alias     of the self-signed certificate and key in the keystore
+         * @param principal subject/signer value of the certificate
+         */
+        KEY_STORE(String name, String alias, String principal) {
+            this.alias = alias;
+            this.prefix = name;
+            this.suffix = ".keystore";
+
+            try {
+                this.keyPair = KeyPairAndCertificate.generateSelfSigned(principal);
+            } catch (GeneralSecurityException e) {
+                throw new RuntimeException("Unable to create enum instance for keystore '" + name + "'", e);
+            }
+            this.certificate = null;
+        }
+
+        /**
+         * Create enum instance with simple certificate (public part) to be used for truststore creation
+         *
+         * @param name        basename of the truststore file
+         * @param alias       of the certificate record in the truststore
+         * @param certificate itself that should be added in the truststore
+         */
+        KEY_STORE(String name, String alias, X509Certificate certificate) {
+            this.alias = alias;
+            this.prefix = name;
+            this.suffix = ".truststore";
+
+            this.keyPair = null;
+            this.certificate = certificate;
+        }
+
+        public File getFile() {
+            return file;
+        }
+
+        private void generateKeystoreForTests(File keystoreFile) throws GeneralSecurityException, IOException {
+            KeyStore keyStore;
+
+            if (keyPair != null) {
+                // Create regular keystore with self-signed certificate
+                keyStore = keyPair.toKeyStore(alias, STORE_PASSWORD, "jks");
+            } else {
+                // Create truststore importing relevant certificate
+                keyStore = KeyPairAndCertificate.toTrustStore(alias, certificate, "jks");
+            }
+
+            try (FileOutputStream output = new FileOutputStream(keystoreFile)) {
+                keyStore.store(output, STORE_PASSWORD);
+            }
+        }
+
+        public File getKeyStoreFile() throws GeneralSecurityException, IOException {
+            if (file == null) {
+                file = Files.createTempFile(prefix, suffix).toFile();
+                generateKeystoreForTests(file);
+            }
+
+            return file;
+        }
+    }
+
+    private static KeyStore loadKeyStore(KEY_STORE name) throws IOException, GeneralSecurityException {
+        File keyStoreFile = name.getKeyStoreFile();
+        assertTrue(keyStoreFile.exists());
+
+        final InputStream stream = new FileInputStream(keyStoreFile);
         if (stream == null) {
             throw new RuntimeException("Could not load keystore");
         }
@@ -327,7 +412,7 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
                         .set(Options.BALANCING_TOKENS, 1)
                         .set(Options.BALANCING_CONNECTIONS, 2)
                         .getMap();
-                final SSLContext serverContext = createSSLContext(loadKeyStore(SERVER_KEY_STORE), loadKeyStore(SERVER_TRUST_STORE), false);
+                final SSLContext serverContext = createSSLContext(loadKeyStore(KEY_STORE.SERVER_KEY_STORE), loadKeyStore(KEY_STORE.SERVER_TRUST_STORE), false);
                 UndertowXnioSsl ssl = new UndertowXnioSsl(worker.getXnio(), OptionMap.EMPTY, SSL_BUFFER_POOL, serverContext);
                 if (ajp) {
                     openListener = new AjpOpenListener(pool);
@@ -349,7 +434,7 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
                     openListener = new Http2OpenListener(pool, OptionMap.create(UndertowOptions.ENABLE_HTTP2, true, UndertowOptions.HTTP2_PADDING_SIZE, 10));
                     acceptListener = ChannelListeners.openListenerAdapter(wrapOpenListener(new AlpnOpenListener(pool).addProtocol(Http2OpenListener.HTTP2, (io.undertow.server.DelegateOpenListener) openListener, 10)));
 
-                    SSLContext clientContext = createSSLContext(loadKeyStore(CLIENT_KEY_STORE), loadKeyStore(CLIENT_TRUST_STORE), true);
+                    SSLContext clientContext = createSSLContext(loadKeyStore(KEY_STORE.CLIENT_KEY_STORE), loadKeyStore(KEY_STORE.CLIENT_TRUST_STORE), true);
                     server = ssl.createSslConnectionServer(worker, new InetSocketAddress(getHostAddress("default"), 7777 + PROXY_OFFSET), acceptListener, serverOptions);
                     server.resumeAccepts();
 
@@ -618,16 +703,16 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
 
     public static SSLContext createClientSslContext(String protocol) {
         try {
-            return createSSLContext(loadKeyStore(CLIENT_KEY_STORE), loadKeyStore(CLIENT_TRUST_STORE), protocol, true);
-        } catch (IOException e) {
+            return createSSLContext(loadKeyStore(KEY_STORE.CLIENT_KEY_STORE), loadKeyStore(KEY_STORE.CLIENT_TRUST_STORE), protocol, true);
+        } catch (IOException | GeneralSecurityException e) {
             throw new RuntimeException(e);
         }
     }
 
     public static SSLContext getServerSslContext() {
         try {
-            return createSSLContext(loadKeyStore(SERVER_KEY_STORE), loadKeyStore(SERVER_TRUST_STORE), false);
-        } catch (IOException e) {
+            return createSSLContext(loadKeyStore(KEY_STORE.SERVER_KEY_STORE), loadKeyStore(KEY_STORE.SERVER_TRUST_STORE), false);
+        } catch (IOException | GeneralSecurityException e) {
             throw new RuntimeException(e);
         }
     }
@@ -638,7 +723,7 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
      * The default settings initialise a server with a key for 'localhost' and a trust store containing the certificate of a
      * single client. Client cert mode is not set by default
      */
-    public static void startSSLServer(OptionMap optionMap) throws IOException {
+    public static void startSSLServer(OptionMap optionMap) throws IOException, GeneralSecurityException {
         clientSslContext = createClientSslContext();
         startSSLServer(optionMap, proxyAcceptListener != null ? proxyAcceptListener : acceptListener);
     }
@@ -649,9 +734,9 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
      * The default settings initialise a server with a key for 'localhost' and a trust store containing the certificate of a
      * single client. Client cert mode is not set by default
      */
-    public static void startSSLServer(OptionMap optionMap, ChannelListener openListener) throws IOException {
-        SSLContext serverContext = createSSLContext(loadKeyStore(SERVER_KEY_STORE), loadKeyStore(SERVER_TRUST_STORE), false);
-        clientSslContext = createSSLContext(loadKeyStore(CLIENT_KEY_STORE), loadKeyStore(CLIENT_TRUST_STORE), true);
+    public static void startSSLServer(OptionMap optionMap, ChannelListener openListener) throws IOException, GeneralSecurityException {
+        SSLContext serverContext = createSSLContext(loadKeyStore(KEY_STORE.SERVER_KEY_STORE), loadKeyStore(KEY_STORE.SERVER_TRUST_STORE), false);
+        clientSslContext = createSSLContext(loadKeyStore(KEY_STORE.CLIENT_KEY_STORE), loadKeyStore(KEY_STORE.CLIENT_TRUST_STORE), true);
         startSSLServer(serverContext, optionMap, openListener);
     }
 
@@ -823,7 +908,7 @@ public class DefaultServer extends BlockJUnit4ClassRunner {
     private static boolean isAlpnEnabled() {
         if (alpnEnabled == null) {
             //we use the client context, as the server one is wrapped by a SNISSLEngine
-            //so we can't tell that ALPN is enabled or now
+            //so we can't tell that ALPN is enabled or no
             SSLEngine engine = getClientSSLContext().createSSLEngine();
             ALPNProvider provider = ALPNManager.INSTANCE.getProvider(engine);
             if (provider instanceof JettyAlpnProvider) {
