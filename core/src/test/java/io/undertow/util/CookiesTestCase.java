@@ -367,6 +367,7 @@ public class CookiesTestCase {
         Assert.assertEquals("WILE_E_COYOTE", cookie.getValue());
         Assert.assertEquals("/", cookie.getPath());
         Assert.assertFalse(cookie.isSameSite());
+        Assert.assertFalse(cookie.isSecure());
         Assert.assertNull(cookie.getSameSiteMode());
 
         cookie = Cookies.parseSetCookieHeader("CUSTOMER=WILE_E_COYOTE; path=/; SameSite=None");
@@ -374,6 +375,7 @@ public class CookiesTestCase {
         Assert.assertEquals("WILE_E_COYOTE", cookie.getValue());
         Assert.assertEquals("/", cookie.getPath());
         Assert.assertTrue(cookie.isSameSite());
+        Assert.assertTrue(cookie.isSecure());
         Assert.assertEquals("None", cookie.getSameSiteMode());
 
         cookie = Cookies.parseSetCookieHeader("SHIPPING=FEDEX; path=/foo; SameSite=Strict");
@@ -381,6 +383,7 @@ public class CookiesTestCase {
         Assert.assertEquals("FEDEX", cookie.getValue());
         Assert.assertEquals("/foo", cookie.getPath());
         Assert.assertTrue(cookie.isSameSite());
+        Assert.assertFalse(cookie.isSecure());
         Assert.assertEquals("Strict", cookie.getSameSiteMode());
 
         cookie = Cookies.parseSetCookieHeader("SHIPPING=FEDEX; path=/acme; SameSite=Lax");
@@ -388,6 +391,7 @@ public class CookiesTestCase {
         Assert.assertEquals("FEDEX", cookie.getValue());
         Assert.assertEquals("/acme", cookie.getPath());
         Assert.assertTrue(cookie.isSameSite());
+        Assert.assertFalse(cookie.isSecure());
         Assert.assertEquals("Lax", cookie.getSameSiteMode());
 
         cookie = Cookies.parseSetCookieHeader("CUSTOMER=WILE_E_COYOTE; path=/; SameSite=test"); // invalid SameSite mode
@@ -395,6 +399,7 @@ public class CookiesTestCase {
         Assert.assertEquals("WILE_E_COYOTE", cookie.getValue());
         Assert.assertEquals("/", cookie.getPath());
         Assert.assertFalse(cookie.isSameSite());
+        Assert.assertFalse(cookie.isSecure());
         Assert.assertNull(cookie.getSameSiteMode());
     }
 

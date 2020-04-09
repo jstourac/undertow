@@ -169,6 +169,9 @@ public class CookieImpl implements Cookie {
             UndertowLogger.REQUEST_LOGGER.tracef("Setting SameSite mode to [%s] for cookie [%s]", m, this.name);
             this.sameSiteMode = m;
             this.setSameSite(true);
+            if (CookieSameSiteMode.NONE.name().equalsIgnoreCase(mode)) {
+                this.setSecure(true);
+            }
         } else {
             UndertowLogger.REQUEST_LOGGER.warnf(UndertowMessages.MESSAGES.invalidSameSiteMode(mode, Arrays.toString(CookieSameSiteMode.values())), "Ignoring specified SameSite mode [%s] for cookie [%s]", mode, this.name);
         }
