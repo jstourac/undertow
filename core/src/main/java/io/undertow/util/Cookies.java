@@ -165,7 +165,6 @@ public class Cookies {
         } else if (key.equalsIgnoreCase("comment")) {
             cookie.setComment(value);
         } else if (key.equalsIgnoreCase("samesite")) {
-            cookie.setSameSite(true);
             cookie.setSameSiteMode(value);
         }
         //otherwise ignore this key-value pair

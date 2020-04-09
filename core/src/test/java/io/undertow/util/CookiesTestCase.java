@@ -366,30 +366,35 @@ public class CookiesTestCase {
         Assert.assertEquals("CUSTOMER", cookie.getName());
         Assert.assertEquals("WILE_E_COYOTE", cookie.getValue());
         Assert.assertEquals("/", cookie.getPath());
+        Assert.assertFalse(cookie.isSameSite());
         Assert.assertNull(cookie.getSameSiteMode());
 
         cookie = Cookies.parseSetCookieHeader("CUSTOMER=WILE_E_COYOTE; path=/; SameSite=None");
         Assert.assertEquals("CUSTOMER", cookie.getName());
         Assert.assertEquals("WILE_E_COYOTE", cookie.getValue());
         Assert.assertEquals("/", cookie.getPath());
+        Assert.assertTrue(cookie.isSameSite());
         Assert.assertEquals("None", cookie.getSameSiteMode());
 
         cookie = Cookies.parseSetCookieHeader("SHIPPING=FEDEX; path=/foo; SameSite=Strict");
         Assert.assertEquals("SHIPPING", cookie.getName());
         Assert.assertEquals("FEDEX", cookie.getValue());
         Assert.assertEquals("/foo", cookie.getPath());
+        Assert.assertTrue(cookie.isSameSite());
         Assert.assertEquals("Strict", cookie.getSameSiteMode());
 
         cookie = Cookies.parseSetCookieHeader("SHIPPING=FEDEX; path=/acme; SameSite=Lax");
         Assert.assertEquals("SHIPPING", cookie.getName());
         Assert.assertEquals("FEDEX", cookie.getValue());
         Assert.assertEquals("/acme", cookie.getPath());
+        Assert.assertTrue(cookie.isSameSite());
         Assert.assertEquals("Lax", cookie.getSameSiteMode());
 
         cookie = Cookies.parseSetCookieHeader("CUSTOMER=WILE_E_COYOTE; path=/; SameSite=test"); // invalid SameSite mode
         Assert.assertEquals("CUSTOMER", cookie.getName());
         Assert.assertEquals("WILE_E_COYOTE", cookie.getValue());
         Assert.assertEquals("/", cookie.getPath());
+        Assert.assertFalse(cookie.isSameSite());
         Assert.assertNull(cookie.getSameSiteMode());
     }
 
